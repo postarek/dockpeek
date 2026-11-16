@@ -19,11 +19,12 @@ final class DockPeekPane: NSPreferencePane {
     private let minimizedCheckbox = NSButton(checkboxWithTitle: "Minimized and hidden windows", target: nil, action: nil)
     private let hideOnClickCheckbox = NSButton(checkboxWithTitle: "Hide when a Dock item is clicked", target: nil, action: nil)
     private let skipSingleCheckbox = NSButton(checkboxWithTitle: "Don't show if the app has only one window", target: nil, action: nil)
+    private let keepDockCheckbox = NSButton(checkboxWithTitle: "Keep the Dock visible while a preview is open", target: nil, action: nil)
     private let autoUpdateCheckbox = NSButton(checkboxWithTitle: "Check for updates automatically", target: nil, action: nil)
     private let checkNowButton = NSButton(title: "Check Now", target: nil, action: nil)
 
     private var dependentControls: [NSControl] {
-        [delayField, delayStepper, sizePopup, otherSpacesCheckbox, minimizedCheckbox, hideOnClickCheckbox, skipSingleCheckbox]
+        [delayField, delayStepper, sizePopup, otherSpacesCheckbox, minimizedCheckbox, hideOnClickCheckbox, skipSingleCheckbox, keepDockCheckbox]
     }
 
     private var statusTimer: Timer?
@@ -108,7 +109,7 @@ final class DockPeekPane: NSPreferencePane {
         let updatesRow = NSStackView(views: [autoUpdateCheckbox, checkNowButton])
         updatesRow.spacing = 12
 
-        for checkbox in [otherSpacesCheckbox, minimizedCheckbox, hideOnClickCheckbox, skipSingleCheckbox, autoUpdateCheckbox] {
+        for checkbox in [otherSpacesCheckbox, minimizedCheckbox, hideOnClickCheckbox, skipSingleCheckbox, keepDockCheckbox, autoUpdateCheckbox] {
             checkbox.target = self
             checkbox.action = #selector(checkboxChanged(_:))
         }
@@ -120,6 +121,7 @@ final class DockPeekPane: NSPreferencePane {
             [NSGridCell.emptyContentView, minimizedCheckbox],
             [label("Behavior:"), hideOnClickCheckbox],
             [NSGridCell.emptyContentView, skipSingleCheckbox],
+            [NSGridCell.emptyContentView, keepDockCheckbox],
             [label("Updates:"), updatesRow],
         ])
         grid.column(at: 0).xPlacement = .trailing
@@ -128,7 +130,7 @@ final class DockPeekPane: NSPreferencePane {
         grid.rowSpacing = 10
         grid.row(at: 2).topPadding = 8
         grid.row(at: 4).topPadding = 8
-        grid.row(at: 6).topPadding = 8
+        grid.row(at: 7).topPadding = 8
 
         let separator = NSBox()
         separator.boxType = .separator
@@ -187,6 +189,7 @@ final class DockPeekPane: NSPreferencePane {
         hideOnClickCheckbox.state = DockPeekSettings.hideOnDockClick ? .on : .off
         skipSingleCheckbox.state = DockPeekSettings.skipSingleWindow ? .on : .off
         autoUpdateCheckbox.state = DockPeekSettings.autoCheckUpdates ? .on : .off
+        keepDockCheckbox.state = DockPeekSettings.keepDockVisible ? .on : .off
         updateEnabledState()
     }
 
@@ -235,6 +238,7 @@ final class DockPeekPane: NSPreferencePane {
         case hideOnClickCheckbox: DockPeekSettings.hideOnDockClick = on
         case skipSingleCheckbox: DockPeekSettings.skipSingleWindow = on
         case autoUpdateCheckbox: DockPeekSettings.autoCheckUpdates = on
+        case keepDockCheckbox: DockPeekSettings.keepDockVisible = on
         default: break
         }
     }

@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let updater = Updater()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        DockAutohideLock.restoreAfterCrash()
         SettingsPaneInstaller.installIfNeeded()
         enableLoginItemOnFirstLaunch()
         setupStatusItem()
@@ -30,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             MainActor.assumeIsolated {
                 DockPeekSettings.store.synchronize()
                 if !DockPeekSettings.previewsEnabled { controller?.hide() }
+                if !DockPeekSettings.keepDockVisible { DockAutohideLock.release() }
             }
         }
         DistributedNotificationCenter.default().addObserver(
@@ -37,6 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.updater.checkNow() }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        DockAutohideLock.release()
     }
 
     /// Like HyperDock, start at login by default; the user can turn it off in the menu afterwards.

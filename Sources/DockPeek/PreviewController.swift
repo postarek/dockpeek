@@ -122,6 +122,8 @@ final class PreviewController {
             panel.alphaValue = 1
             panel.orderFrontRegardless()
         }
+        // The pointer is still on the icon, so the Dock is shown: keep it that way while the preview is open.
+        if DockPeekSettings.keepDockVisible { DockAutohideLock.hold() }
         startPolling()
     }
 
@@ -191,6 +193,7 @@ final class PreviewController {
         shownItem = nil
         panel.orderOut(nil)
         model.windows = []
+        DockAutohideLock.release()
     }
 
     // MARK: - Auto-hide
@@ -224,7 +227,9 @@ final class PreviewController {
 
     private func checkMouse() {
         let hovered = hoveredItem.flatMap { isMouseOver($0) ? $0 : nil }
-        if isMouseInsidePanel || (hovered != nil && hovered == shownItem) {
+        // Over the shown icon counts even if the Dock dropped its hover state (it can when auto-hide changes).
+        let overShownIcon = shownItem.map(isMouseOver) ?? false
+        if isMouseInsidePanel || overShownIcon {
             outsideSince = nil
             return
         }

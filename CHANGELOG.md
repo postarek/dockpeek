@@ -4,6 +4,11 @@ Versions follow [semver](https://semver.org): patch for fixes, minor for new fea
 changes. Bump with `./build.sh --bump [patch|minor|major]`. Each section below becomes the release notes
 shown in DockPeek's update prompt, so it is written in English.
 
+## 1.1.1 — 2026-11-16
+
+- With Dock auto-hide on, the Dock now stays visible while you move into a preview, instead of hiding
+  and leaving the preview floating. Can be turned off in System Settings › DockPeek.
+
 ## 1.1.0 — 2026-11-16
 
 - DockPeek now updates itself: it checks GitHub for new versions and installs them with one click.

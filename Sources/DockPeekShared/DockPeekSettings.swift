@@ -17,6 +17,7 @@ public enum DockPeekSettings {
         public static let hideOnDockClick = "hideOnDockClick"
         public static let skipSingleWindow = "skipSingleWindow"
         public static let autoCheckUpdates = "autoCheckUpdates"
+        public static let keepDockVisible = "keepDockVisible"
     }
 
     public enum PreviewSize: Int, CaseIterable {
@@ -50,6 +51,7 @@ public enum DockPeekSettings {
         Key.hideOnDockClick: true,
         Key.skipSingleWindow: false,
         Key.autoCheckUpdates: true,
+        Key.keepDockVisible: true,
     ]
 
     /// The app uses its own standard defaults; any other process (the pane) opens the app's domain by name.
@@ -102,6 +104,12 @@ public enum DockPeekSettings {
     public static var autoCheckUpdates: Bool {
         get { store.bool(forKey: Key.autoCheckUpdates) }
         set { write(newValue, Key.autoCheckUpdates) }
+    }
+
+    /// With Dock auto-hide on, keep the Dock shown while a preview is open.
+    public static var keepDockVisible: Bool {
+        get { store.bool(forKey: Key.keepDockVisible) }
+        set { write(newValue, Key.keepDockVisible) }
     }
 
     private static func write(_ value: Any, _ key: String) {
