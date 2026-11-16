@@ -14,6 +14,8 @@ final class DockPeekPane: NSPreferencePane {
     private let enabledCheckbox = NSButton(checkboxWithTitle: "Enable window previews", target: nil, action: nil)
     private let delayField = NSTextField()
     private let delayStepper = NSStepper()
+    private let hideDelayField = NSTextField()
+    private let hideDelayStepper = NSStepper()
     private let sizePopup = NSPopUpButton()
     private let otherSpacesCheckbox = NSButton(checkboxWithTitle: "Windows from other Spaces", target: nil, action: nil)
     private let minimizedCheckbox = NSButton(checkboxWithTitle: "Minimized and hidden windows", target: nil, action: nil)
@@ -24,7 +26,7 @@ final class DockPeekPane: NSPreferencePane {
     private let checkNowButton = NSButton(title: "Check Now", target: nil, action: nil)
 
     private var dependentControls: [NSControl] {
-        [delayField, delayStepper, sizePopup, otherSpacesCheckbox, minimizedCheckbox, hideOnClickCheckbox, skipSingleCheckbox, keepDockCheckbox]
+        [delayField, delayStepper, hideDelayField, hideDelayStepper, sizePopup, otherSpacesCheckbox, minimizedCheckbox, hideOnClickCheckbox, skipSingleCheckbox, keepDockCheckbox]
     }
 
     private var statusTimer: Timer?
@@ -58,7 +60,7 @@ final class DockPeekPane: NSPreferencePane {
     // MARK: - Layout
 
     private func buildView() -> NSView {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 668, height: 470))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 668, height: 520))
 
         // Status header
         statusDot.imageScaling = .scaleProportionallyUpOrDown
@@ -76,26 +78,11 @@ final class DockPeekPane: NSPreferencePane {
         let enabledRow = NSStackView(views: [enabledCheckbox])
         enabledRow.alignment = .centerX
 
-        // Activation delay
-        delayField.alignment = .right
-        delayField.formatter = {
-            let formatter = NumberFormatter()
-            formatter.minimum = NSNumber(value: DockPeekSettings.activationDelayRange.lowerBound)
-            formatter.maximum = NSNumber(value: DockPeekSettings.activationDelayRange.upperBound)
-            formatter.allowsFloats = false
-            return formatter
-        }()
-        delayField.widthAnchor.constraint(equalToConstant: 60).isActive = true
-        delayField.target = self
-        delayField.action = #selector(delayFieldChanged)
-        delayStepper.minValue = Double(DockPeekSettings.activationDelayRange.lowerBound)
-        delayStepper.maxValue = Double(DockPeekSettings.activationDelayRange.upperBound)
-        delayStepper.increment = 10
-        delayStepper.valueWraps = false
-        delayStepper.target = self
-        delayStepper.action = #selector(delayStepperChanged)
-        let delayRow = NSStackView(views: [delayField, delayStepper, NSTextField(labelWithString: "ms")])
-        delayRow.spacing = 4
+        // Activation and hide delays
+        let delayRow = makeDelayRow(field: delayField, stepper: delayStepper,
+                                    fieldAction: #selector(delayFieldChanged), stepperAction: #selector(delayStepperChanged))
+        let hideDelayRow = makeDelayRow(field: hideDelayField, stepper: hideDelayStepper,
+                                        fieldAction: #selector(hideDelayFieldChanged), stepperAction: #selector(hideDelayStepperChanged))
 
         // Preview size
         sizePopup.addItems(withTitles: DockPeekSettings.PreviewSize.allCases.map(\.title))
@@ -116,6 +103,7 @@ final class DockPeekPane: NSPreferencePane {
 
         let grid = NSGridView(views: [
             [label("Activation delay:"), delayRow],
+            [label("Hide delay:"), hideDelayRow],
             [label("Preview size:"), sizePopup],
             [label("Include:"), otherSpacesCheckbox],
             [NSGridCell.emptyContentView, minimizedCheckbox],
@@ -128,9 +116,9 @@ final class DockPeekPane: NSPreferencePane {
         grid.rowAlignment = .firstBaseline
         grid.columnSpacing = 8
         grid.rowSpacing = 10
-        grid.row(at: 2).topPadding = 8
-        grid.row(at: 4).topPadding = 8
-        grid.row(at: 7).topPadding = 8
+        grid.row(at: 3).topPadding = 8
+        grid.row(at: 5).topPadding = 8
+        grid.row(at: 8).topPadding = 8
 
         let separator = NSBox()
         separator.boxType = .separator
@@ -162,6 +150,29 @@ final class DockPeekPane: NSPreferencePane {
         return root
     }
 
+    private func makeDelayRow(field: NSTextField, stepper: NSStepper, fieldAction: Selector, stepperAction: Selector) -> NSView {
+        field.alignment = .right
+        field.formatter = {
+            let formatter = NumberFormatter()
+            formatter.minimum = NSNumber(value: DockPeekSettings.activationDelayRange.lowerBound)
+            formatter.maximum = NSNumber(value: DockPeekSettings.activationDelayRange.upperBound)
+            formatter.allowsFloats = false
+            return formatter
+        }()
+        field.widthAnchor.constraint(equalToConstant: 60).isActive = true
+        field.target = self
+        field.action = fieldAction
+        stepper.minValue = Double(DockPeekSettings.activationDelayRange.lowerBound)
+        stepper.maxValue = Double(DockPeekSettings.activationDelayRange.upperBound)
+        stepper.increment = 10
+        stepper.valueWraps = false
+        stepper.target = self
+        stepper.action = stepperAction
+        let row = NSStackView(views: [field, stepper, NSTextField(labelWithString: "ms")])
+        row.spacing = 4
+        return row
+    }
+
     private func label(_ text: String) -> NSTextField {
         NSTextField(labelWithString: text)
     }
@@ -183,6 +194,8 @@ final class DockPeekPane: NSPreferencePane {
         enabledCheckbox.state = DockPeekSettings.previewsEnabled ? .on : .off
         delayField.integerValue = DockPeekSettings.activationDelayMs
         delayStepper.integerValue = DockPeekSettings.activationDelayMs
+        hideDelayField.integerValue = DockPeekSettings.hideDelayMs
+        hideDelayStepper.integerValue = DockPeekSettings.hideDelayMs
         sizePopup.selectItem(at: DockPeekSettings.previewSize.rawValue)
         otherSpacesCheckbox.state = DockPeekSettings.includeOtherSpaces ? .on : .off
         minimizedCheckbox.state = DockPeekSettings.includeMinimized ? .on : .off
@@ -224,6 +237,17 @@ final class DockPeekPane: NSPreferencePane {
     @objc private func delayStepperChanged() {
         DockPeekSettings.activationDelayMs = delayStepper.integerValue
         delayField.integerValue = DockPeekSettings.activationDelayMs
+    }
+
+    @objc private func hideDelayFieldChanged() {
+        DockPeekSettings.hideDelayMs = hideDelayField.integerValue
+        hideDelayStepper.integerValue = DockPeekSettings.hideDelayMs
+        hideDelayField.integerValue = DockPeekSettings.hideDelayMs
+    }
+
+    @objc private func hideDelayStepperChanged() {
+        DockPeekSettings.hideDelayMs = hideDelayStepper.integerValue
+        hideDelayField.integerValue = DockPeekSettings.hideDelayMs
     }
 
     @objc private func sizeChanged() {

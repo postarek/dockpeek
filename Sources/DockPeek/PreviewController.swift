@@ -36,7 +36,6 @@ final class PreviewController {
     private var mouseDownMonitor: Any?
 
     private static let gap: CGFloat = 6
-    private static let hideDelay: TimeInterval = 0.3
 
     init() {
         hostingView = FirstMouseHostingView(rootView: PreviewView(model: model))
@@ -204,7 +203,7 @@ final class PreviewController {
 
     private func startPolling() {
         guard pollTimer == nil else { return }
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
             MainActor.assumeIsolated { [weak self] in self?.checkMouse() }
         }
     }
@@ -237,6 +236,6 @@ final class PreviewController {
         if hovered != nil, hovered != suppressedItem { outsideSince = nil; return }
         let since = outsideSince ?? Date()
         outsideSince = since
-        if Date().timeIntervalSince(since) >= Self.hideDelay { hide() }
+        if Date().timeIntervalSince(since) >= Double(DockPeekSettings.hideDelayMs) / 1000 { hide() }
     }
 }

@@ -4,6 +4,11 @@ Versions follow [semver](https://semver.org): patch for fixes, minor for new fea
 changes. Bump with `./build.sh --bump [patch|minor|major]`. Each section below becomes the release notes
 shown in DockPeek's update prompt, so it is written in English.
 
+## 1.2.0 — 2026-11-16
+
+- New "Hide delay" setting in System Settings › DockPeek: how long the preview stays after the pointer
+  leaves it. Default is now 150 ms (it was a fixed 300 ms), and the preview reacts faster.
+
 ## 1.1.1 — 2026-11-16
 
 - With Dock auto-hide on, the Dock now stays visible while you move into a preview, instead of hiding

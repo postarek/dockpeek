@@ -11,6 +11,7 @@ public enum DockPeekSettings {
     public enum Key {
         public static let previewsEnabled = "previewsEnabled"
         public static let activationDelayMs = "activationDelayMs"
+        public static let hideDelayMs = "hideDelayMs"
         public static let previewSize = "previewSize"
         public static let includeOtherSpaces = "includeOtherSpaces"
         public static let includeMinimized = "includeMinimized"
@@ -45,6 +46,7 @@ public enum DockPeekSettings {
     public static let registeredDefaults: [String: Any] = [
         Key.previewsEnabled: true,
         Key.activationDelayMs: 150,
+        Key.hideDelayMs: 150,
         Key.previewSize: PreviewSize.medium.rawValue,
         Key.includeOtherSpaces: true,
         Key.includeMinimized: true,
@@ -73,6 +75,15 @@ public enum DockPeekSettings {
         set {
             let clamped = min(max(newValue, activationDelayRange.lowerBound), activationDelayRange.upperBound)
             write(clamped, Key.activationDelayMs)
+        }
+    }
+
+    /// How long the preview stays after the pointer leaves it (and its Dock icon).
+    public static var hideDelayMs: Int {
+        get { store.integer(forKey: Key.hideDelayMs) }
+        set {
+            let clamped = min(max(newValue, activationDelayRange.lowerBound), activationDelayRange.upperBound)
+            write(clamped, Key.hideDelayMs)
         }
     }
 
