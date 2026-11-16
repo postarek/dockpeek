@@ -1,0 +1,4 @@
+#!/bin/bash
+# Quit a running DockPeek so the new version can replace it.
+pkill -x DockPeek 2>/dev/null || true
+exit 0

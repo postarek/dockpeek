@@ -1,0 +1,15 @@
+#!/bin/bash
+# Runs as root. Relaunch DockPeek as the logged-in user; on launch the app installs/updates its
+# System Settings pane in ~/Library/PreferencePanes and asks for its permissions.
+
+# A pane already loaded by System Settings would show blank after being replaced.
+pkill -f legacyLoader-arm64 2>/dev/null || true
+
+CONSOLE_USER="$(stat -f %Su /dev/console)"
+if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" && "$CONSOLE_USER" != "loginwindow" ]]; then
+    CONSOLE_UID="$(id -u "$CONSOLE_USER")"
+    # Let the app update itself later without asking for an administrator password.
+    chown -R "$CONSOLE_USER" "/Applications/DockPeek.app" || true
+    launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" /usr/bin/open -a "/Applications/DockPeek.app" || true
+fi
+exit 0
