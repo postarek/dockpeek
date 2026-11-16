@@ -69,7 +69,9 @@ final class DockPeekPane: NSPreferencePane {
         launchButton.target = self
         launchButton.action = #selector(launchApp)
         launchButton.bezelStyle = .rounded
-        let statusRow = NSStackView(views: [statusDot, statusLabel, NSView(), launchButton])
+        let versionLabel = NSTextField(labelWithString: "Version \(version)")
+        versionLabel.textColor = .secondaryLabelColor
+        let statusRow = NSStackView(views: [statusDot, statusLabel, NSView(), versionLabel, launchButton])
         statusRow.spacing = 8
 
         // Main toggle
@@ -123,14 +125,10 @@ final class DockPeekPane: NSPreferencePane {
         let separator = NSBox()
         separator.boxType = .separator
 
-        let footer = NSTextField(labelWithString: "Version \(version)")
-        footer.textColor = .secondaryLabelColor
-        footer.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-
         let gridWrapper = NSStackView(views: [grid])
         gridWrapper.alignment = .centerX
 
-        let content = NSStackView(views: [statusRow, makeSeparator(), enabledRow, separator, gridWrapper, NSView(), footer])
+        let content = NSStackView(views: [statusRow, makeSeparator(), enabledRow, separator, gridWrapper, NSView()])
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = 16

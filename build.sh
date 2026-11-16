@@ -118,6 +118,8 @@ if [[ "$MODE" == "--install" ]]; then
     fi
     pkill -f "legacyLoader-arm64" 2>/dev/null || true
     pkill -x DockPeek 2>/dev/null || true
+    # Opening the new copy while the old one is still quitting fails (error -600).
+    for _ in {1..50}; do pgrep -x DockPeek >/dev/null || break; sleep 0.1; done
 
     if [[ -e /Applications/DockPeek.app && ! -O /Applications/DockPeek.app/Contents/Info.plist ]]; then
         # Installed by the .pkg (owned by root): replacing it needs an administrator password.

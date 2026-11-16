@@ -4,6 +4,10 @@ Versions follow [semver](https://semver.org): patch for fixes, minor for new fea
 changes. Bump with `./build.sh --bump [patch|minor|major]`. Each section below becomes the release notes
 shown in DockPeek's update prompt, so it is written in English.
 
+## 1.2.1 — 2026-11-16
+
+- System Settings › DockPeek shows the version at the top, next to the running status.
+
 ## 1.2.0 — 2026-11-16
 
 - New "Hide delay" setting in System Settings › DockPeek: how long the preview stays after the pointer
