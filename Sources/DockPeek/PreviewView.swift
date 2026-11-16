@@ -46,11 +46,9 @@ struct PreviewView: View {
         }
         .padding(10)
         .background(
-            // Nearly opaque: the Dock's own app-name label sits right under the preview and must not show through.
-            ZStack {
-                VisualEffectBackground()
-                Color(nsColor: .windowBackgroundColor).opacity(0.92)
-            }
+            // Opaque and dark (the panel always uses the dark appearance): the Dock's app-name label under
+            // it must not show through.
+            Color(nsColor: .windowBackgroundColor)
         )
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
@@ -134,17 +132,6 @@ private struct WindowCard: View {
     }
 }
 
-private struct VisualEffectBackground: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .hudWindow
-        view.blendingMode = .behindWindow
-        view.state = .active
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
-}
 
 /// Hosting view that accepts the first click even though the panel never becomes key.
 final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {

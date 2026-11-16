@@ -4,6 +4,13 @@ Versions follow [semver](https://semver.org): patch for fixes, minor for new fea
 changes. Bump with `./build.sh --bump [patch|minor|major]`. Each section below becomes the release notes
 shown in DockPeek's update prompt, so it is written in English.
 
+## 1.2.3 — 2026-11-16
+
+- The preview now fully covers the Dock's own app-name label instead of leaving it visible below.
+- The preview has a dark, solid background, in both light and dark mode.
+- Fixed: the preview flickered (closed and reopened) when moving between Dock icons. Recently seen
+  window thumbnails now show right away.
+
 ## 1.2.2 — 2026-11-16
 
 - Fixed: with Dock magnification, the preview jumped when it appeared and wobbled while the pointer

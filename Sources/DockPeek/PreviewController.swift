@@ -14,6 +14,8 @@ final class PreviewPanel: NSPanel {
         isMovable = false
         isReleasedWhenClosed = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        // Always dark, like the Dock, whatever the system appearance.
+        appearance = NSAppearance(named: .darkAqua)
     }
 
     override var canBecomeKey: Bool { false }
@@ -35,7 +37,13 @@ final class PreviewController {
     private var outsideSince: Date?
     private var mouseDownMonitor: Any?
 
-    private static let gap: CGFloat = 2
+    /// Negative: the preview slightly overlaps the top of the (magnified) icon frame, which is where the
+    /// Dock draws its app-name label, so the label is covered while a preview is open.
+    /// Recently captured thumbnails, so switching between Dock icons shows the windows right away
+    /// (the fresh capture replaces them a moment later).
+    private var thumbnailCache: [CGWindowID: NSImage] = [:]
+
+    private static let gap: CGFloat = -8
 
     init() {
         hostingView = FirstMouseHostingView(rootView: PreviewView(model: model))
@@ -113,7 +121,11 @@ final class PreviewController {
         model.appIcon = app.icon
         model.vertical = orientation != .bottom
         model.thumbnailMaxSize = Self.thumbnailSize(count: entries.count, orientation: orientation, visible: visible)
-        model.windows = entries
+        model.windows = entries.map { entry in
+            var entry = entry
+            if entry.thumbnail == nil, !entry.isMinimized { entry.thumbnail = thumbnailCache[entry.id] }
+            return entry
+        }
         shownItem = item
 
         layoutPanel(anchor: DockGeometry.anchor(for: item.frame), orientation: orientation, visible: visible)
@@ -165,8 +177,9 @@ final class PreviewController {
                 group.addTask { (entry.id, await WindowProvider.thumbnail(for: window, fitting: maxSize)) }
             }
             for await (id, image) in group {
-                guard !Task.isCancelled, let image,
-                      let index = model.windows.firstIndex(where: { $0.id == id }) else { continue }
+                guard !Task.isCancelled, let image else { continue }
+                thumbnailCache[id] = image
+                guard let index = model.windows.firstIndex(where: { $0.id == id }) else { continue }
                 model.windows[index].thumbnail = image
             }
         }
@@ -193,6 +206,8 @@ final class PreviewController {
         panel.orderOut(nil)
         model.windows = []
         DockAutohideLock.release()
+        // Bounded: start over once it holds many windows (closed windows' images go with it).
+        if thumbnailCache.count > 60 { thumbnailCache.removeAll() }
     }
 
     // MARK: - Auto-hide
@@ -237,6 +252,27 @@ final class PreviewController {
         if hovered != nil, hovered != suppressedItem { outsideSince = nil; return }
         let since = outsideSince ?? Date()
         outsideSince = since
-        if Date().timeIntervalSince(since) >= Double(DockPeekSettings.hideDelayMs) / 1000 { hide() }
+        var delay = Double(DockPeekSettings.hideDelayMs) / 1000
+        // Moving between icons, the Dock briefly reports no icon: on the Dock itself, don't close the
+        // preview just to reopen it for the next icon a moment later.
+        if isMouseOverDock { delay = max(delay, Self.dockGrace) }
+        if Date().timeIntervalSince(since) >= delay { hide() }
+    }
+
+    private static let dockGrace: TimeInterval = 0.35
+
+    /// The strip of screen the Dock occupies (up to the magnified icon height), next to the shown icon's screen edge.
+    private var isMouseOverDock: Bool {
+        guard let item = shownItem,
+              let screen = NSScreen.screens.first(where: { $0.frame.intersects(item.frame) })?.frame
+        else { return false }
+        let anchor = DockGeometry.anchor(for: item.frame)
+        let mouse = NSEvent.mouseLocation
+        guard screen.contains(mouse) else { return false }
+        switch DockOrientation.current {
+        case .bottom: return mouse.y <= anchor.maxY
+        case .left: return mouse.x <= anchor.maxX
+        case .right: return mouse.x >= anchor.minX
+        }
     }
 }
