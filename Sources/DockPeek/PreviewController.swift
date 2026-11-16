@@ -35,7 +35,7 @@ final class PreviewController {
     private var outsideSince: Date?
     private var mouseDownMonitor: Any?
 
-    private static let gap: CGFloat = 6
+    private static let gap: CGFloat = 2
 
     init() {
         hostingView = FirstMouseHostingView(rootView: PreviewView(model: model))
@@ -116,7 +116,7 @@ final class PreviewController {
         model.windows = entries
         shownItem = item
 
-        layoutPanel(anchor: item.frame, orientation: orientation, visible: visible)
+        layoutPanel(anchor: DockGeometry.anchor(for: item.frame), orientation: orientation, visible: visible)
         if !panel.isVisible {
             panel.alphaValue = 1
             panel.orderFrontRegardless()
@@ -179,7 +179,7 @@ final class PreviewController {
             hide()
         } else if let item = shownItem {
             let screen = NSScreen.screens.first { $0.frame.intersects(item.frame) } ?? NSScreen.main
-            layoutPanel(anchor: item.frame, orientation: .current, visible: screen?.visibleFrame ?? .zero)
+            layoutPanel(anchor: DockGeometry.anchor(for: item.frame), orientation: .current, visible: screen?.visibleFrame ?? .zero)
         }
     }
 
@@ -211,7 +211,8 @@ final class PreviewController {
     /// The Dock does not always report that the pointer left an icon (e.g. when it auto-hides or the
     /// pointer leaves quickly), so the AX selection alone can be stale: confirm with the pointer position.
     private func isMouseOver(_ item: DockItem) -> Bool {
-        var area = item.frame.insetBy(dx: -6, dy: -6)
+        // Up to the magnified icon's full size, which also covers the gap up to the preview.
+        var area = DockGeometry.anchor(for: item.frame).insetBy(dx: -6, dy: -6)
         // Extend to the screen edge the Dock is attached to (covers the gap below/beside the icon).
         if let screen = NSScreen.screens.first(where: { $0.frame.intersects(item.frame) }) {
             let edge = screen.frame

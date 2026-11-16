@@ -4,6 +4,14 @@ Versions follow [semver](https://semver.org): patch for fixes, minor for new fea
 changes. Bump with `./build.sh --bump [patch|minor|major]`. Each section below becomes the release notes
 shown in DockPeek's update prompt, so it is written in English.
 
+## 1.2.2 — 2026-11-16
+
+- Fixed: with Dock magnification, the preview jumped when it appeared and wobbled while the pointer
+  moved over the Dock. It now sits above the fully magnified icon and stays still.
+- Fixed: coming out of Dock auto-hide, the preview could appear stuck down at the Dock's base.
+- The preview background is no longer see-through, so the Dock's own app-name label doesn't show
+  behind it.
+
 ## 1.2.1 — 2026-11-16
 
 - System Settings › DockPeek shows the version at the top, next to the running status.

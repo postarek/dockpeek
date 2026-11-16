@@ -120,6 +120,7 @@ if [[ "$MODE" == "--install" ]]; then
     pkill -x DockPeek 2>/dev/null || true
     # Opening the new copy while the old one is still quitting fails (error -600).
     for _ in {1..50}; do pgrep -x DockPeek >/dev/null || break; sleep 0.1; done
+    sleep 1   # LaunchServices still holds the old instance for a moment after it exits
 
     if [[ -e /Applications/DockPeek.app && ! -O /Applications/DockPeek.app/Contents/Info.plist ]]; then
         # Installed by the .pkg (owned by root): replacing it needs an administrator password.
@@ -128,7 +129,7 @@ if [[ "$MODE" == "--install" ]]; then
         rm -rf /Applications/DockPeek.app
     fi
     cp -R "$APP" /Applications/
-    open /Applications/DockPeek.app   # installs/updates ~/Library/PreferencePanes/DockPeek.prefPane
+    open /Applications/DockPeek.app || { sleep 2; open /Applications/DockPeek.app; }   # installs/updates ~/Library/PreferencePanes/DockPeek.prefPane
     echo "Installed to /Applications/DockPeek.app"
 
     if $SETTINGS_WAS_OPEN; then

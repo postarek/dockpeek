@@ -45,7 +45,13 @@ struct PreviewView: View {
             }
         }
         .padding(10)
-        .background(VisualEffectBackground())
+        .background(
+            // Nearly opaque: the Dock's own app-name label sits right under the preview and must not show through.
+            ZStack {
+                VisualEffectBackground()
+                Color(nsColor: .windowBackgroundColor).opacity(0.92)
+            }
+        )
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
