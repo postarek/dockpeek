@@ -21,7 +21,7 @@ final class DockPeekPane: NSPreferencePane {
     private let minimizedCheckbox = NSButton(checkboxWithTitle: "Minimized and hidden windows", target: nil, action: nil)
     private let hideOnClickCheckbox = NSButton(checkboxWithTitle: "Hide when a Dock item is clicked", target: nil, action: nil)
     private let skipSingleCheckbox = NSButton(checkboxWithTitle: "Don't show if the app has only one window", target: nil, action: nil)
-    private let keepDockCheckbox = NSButton(checkboxWithTitle: "Keep the Dock visible while a preview is open", target: nil, action: nil)
+    private let keepDockCheckbox = NSButton(checkboxWithTitle: "Keep the Dock visible while the pointer is in a preview", target: nil, action: nil)
     private let autoUpdateCheckbox = NSButton(checkboxWithTitle: "Check for updates automatically", target: nil, action: nil)
     private let checkNowButton = NSButton(title: "Check Now", target: nil, action: nil)
 

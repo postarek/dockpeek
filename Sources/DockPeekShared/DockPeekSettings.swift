@@ -117,7 +117,7 @@ public enum DockPeekSettings {
         set { write(newValue, Key.autoCheckUpdates) }
     }
 
-    /// With Dock auto-hide on, keep the Dock shown while a preview is open.
+    /// With Dock auto-hide on, keep the Dock shown while the pointer is in a preview.
     public static var keepDockVisible: Bool {
         get { store.bool(forKey: Key.keepDockVisible) }
         set { write(newValue, Key.keepDockVisible) }

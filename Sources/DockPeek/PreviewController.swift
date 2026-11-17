@@ -43,6 +43,24 @@ final class PreviewController {
     /// (the fresh capture replaces them a moment later).
     private var thumbnailCache: [CGWindowID: NSImage] = [:]
 
+    /// Whether the preview is shown (or fading in); false as soon as it starts fading out.
+    private var isPresented = false
+    /// Just enough to soften the preview appearing and disappearing.
+    private static let fadeInStartAlpha: CGFloat = 0.4
+    private static let fadeInDuration: TimeInterval = 0.12
+    private static let fadeOutDuration: TimeInterval = 0.1
+
+    private func fade(to alpha: CGFloat, duration: TimeInterval, completion: (@MainActor @Sendable () -> Void)? = nil) {
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = alpha
+        }, completionHandler: {
+            guard let completion else { return }
+            MainActor.assumeIsolated { completion() }
+        })
+    }
+
     private static let gap: CGFloat = -8
 
     init() {
@@ -57,7 +75,7 @@ final class PreviewController {
         // Clicking anywhere else (including the Dock icon itself) dismisses the preview.
         mouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
             MainActor.assumeIsolated { [weak self] in
-                guard let self, self.panel.isVisible else { return }
+                guard let self, self.isPresented else { return }
                 // Clicking the Dock icon itself keeps the preview when the user turned that off.
                 if !DockPeekSettings.hideOnDockClick, self.hoveredItem != nil { return }
                 self.suppressedItem = self.shownItem
@@ -74,14 +92,14 @@ final class PreviewController {
         guard DockPeekSettings.previewsEnabled else { return hide() }
         if item != suppressedItem { suppressedItem = nil }
         guard let item, item != suppressedItem else { return }
-        if panel.isVisible, item == shownItem { return }
+        if isPresented, item == shownItem { return }
 
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated { self?.show(for: item) }
         }
         pendingShow = work
         // Activation delay so sweeping across the Dock does not flash previews.
-        let delay = panel.isVisible ? 0.05 : Double(DockPeekSettings.activationDelayMs) / 1000
+        let delay = isPresented ? 0.05 : Double(DockPeekSettings.activationDelayMs) / 1000
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
@@ -129,12 +147,15 @@ final class PreviewController {
         shownItem = item
 
         layoutPanel(anchor: DockGeometry.anchor(for: item.frame), orientation: orientation, visible: visible)
-        if !panel.isVisible {
-            panel.alphaValue = 1
+        if !isPresented {
+            isPresented = true
+            panel.ignoresMouseEvents = false
+            // Start partly visible, so it shows up at once (a fade from zero reads as a delay) and only
+            // the hard pop is softened.
+            if !panel.isVisible || panel.alphaValue < Self.fadeInStartAlpha { panel.alphaValue = Self.fadeInStartAlpha }
             panel.orderFrontRegardless()
+            fade(to: 1, duration: Self.fadeInDuration)
         }
-        // The pointer is still on the icon, so the Dock is shown: keep it that way while the preview is open.
-        if DockPeekSettings.keepDockVisible { DockAutohideLock.hold() }
         startPolling()
     }
 
@@ -203,9 +224,18 @@ final class PreviewController {
         pollTimer = nil
         outsideSince = nil
         shownItem = nil
-        panel.orderOut(nil)
-        model.windows = []
-        DockAutohideLock.release()
+        if isPresented {
+            isPresented = false
+            panel.ignoresMouseEvents = true
+            fade(to: 0, duration: Self.fadeOutDuration) { [weak self] in
+                // A new preview may have started while fading out.
+                guard let self, !self.isPresented else { return }
+                self.panel.orderOut(nil)
+                self.model.windows = []   // after the fade, so the content doesn't vanish mid-fade
+            }
+        } else {
+            model.windows = []
+        }
         // Bounded: start over once it holds many windows (closed windows' images go with it).
         if thumbnailCache.count > 60 { thumbnailCache.removeAll() }
     }
@@ -213,7 +243,7 @@ final class PreviewController {
     // MARK: - Auto-hide
 
     private var isMouseInsidePanel: Bool {
-        panel.isVisible && panel.frame.insetBy(dx: -4, dy: -4).contains(NSEvent.mouseLocation)
+        isPresented && panel.frame.insetBy(dx: -4, dy: -4).contains(NSEvent.mouseLocation)
     }
 
     private func startPolling() {
@@ -241,8 +271,12 @@ final class PreviewController {
     }
 
     private func checkMouse() {
+        if isMouseInsidePanel, DockPeekSettings.keepDockVisible, let item = shownItem {
+            // Tell the Dock (only) the pointer is still on the icon, near its base, so it doesn't auto-hide.
+            DockHoverNudge.nudge(at: CGPoint(x: item.frame.midX, y: item.frame.minY + item.frame.height / 3))
+        }
         let hovered = hoveredItem.flatMap { isMouseOver($0) ? $0 : nil }
-        // Over the shown icon counts even if the Dock dropped its hover state (it can when auto-hide changes).
+        // Over the shown icon counts even if the Dock dropped its hover state (it can when the Dock auto-hides).
         let overShownIcon = shownItem.map(isMouseOver) ?? false
         if isMouseInsidePanel || overShownIcon {
             outsideSince = nil
