@@ -8,6 +8,10 @@ final class PreviewModel: ObservableObject {
     @Published var windows: [WindowEntry] = []
     @Published var vertical = false
     @Published var thumbnailMaxSize = CGSize(width: 240, height: 160)
+    /// The side the tail points out of (towards the Dock) and where along that side its tip is, measured
+    /// from the left (bottom Dock) or the top (side Dock) of the preview.
+    @Published var tailEdge: PreviewTail.Edge = .bottom
+    @Published var tailPosition: CGFloat?
 
     var onSelect: ((WindowEntry) -> Void)?
     var onClose: ((WindowEntry) -> Void)?
@@ -45,17 +49,77 @@ struct PreviewView: View {
             }
         }
         .padding(10)
+        // Room for the tail on the Dock side.
+        .padding(model.tailEdge.paddingEdge, PreviewTail.length)
         .background(
             // Opaque and dark (the panel always uses the dark appearance): the Dock's app-name label under
             // it must not show through.
-            Color(nsColor: .windowBackgroundColor)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+            PreviewBubble(edge: model.tailEdge, position: model.tailPosition)
+                .fill(Color(nsColor: .windowBackgroundColor))
         )
         .fixedSize()
+    }
+}
+
+enum PreviewTail {
+    /// How far the tail sticks out of the preview, and its width at the base.
+    static let length: CGFloat = 8
+    static let width: CGFloat = 20
+
+    enum Edge {
+        case bottom, left, right
+
+        var paddingEdge: SwiftUI.Edge.Set {
+            switch self {
+            case .bottom: return .bottom
+            case .left: return .leading
+            case .right: return .trailing
+            }
+        }
+    }
+}
+
+/// Rounded rectangle with a small tail pointing at the Dock icon, like the Dock's own name label.
+private struct PreviewBubble: Shape {
+    let edge: PreviewTail.Edge
+    let position: CGFloat?
+    private let radius: CGFloat = 14
+
+    func path(in rect: CGRect) -> Path {
+        let length = PreviewTail.length, half = PreviewTail.width / 2
+        var body = rect
+        switch edge {
+        case .bottom: body.size.height -= length
+        case .left: body.origin.x += length; body.size.width -= length
+        case .right: body.size.width -= length
+        }
+        var path = Path(roundedRect: body, cornerRadius: radius, style: .continuous)
+
+        // Keep the tail clear of the rounded corners.
+        func clamped(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat {
+            min(max(value, low + radius + half), high - radius - half)
+        }
+        var tail = Path()
+        switch edge {
+        case .bottom:
+            let x = clamped(position ?? body.midX, body.minX, body.maxX)
+            tail.move(to: CGPoint(x: x - half, y: body.maxY - 1))
+            tail.addLine(to: CGPoint(x: x, y: rect.maxY))
+            tail.addLine(to: CGPoint(x: x + half, y: body.maxY - 1))
+        case .left:
+            let y = clamped(position ?? body.midY, body.minY, body.maxY)
+            tail.move(to: CGPoint(x: body.minX + 1, y: y - half))
+            tail.addLine(to: CGPoint(x: rect.minX, y: y))
+            tail.addLine(to: CGPoint(x: body.minX + 1, y: y + half))
+        case .right:
+            let y = clamped(position ?? body.midY, body.minY, body.maxY)
+            tail.move(to: CGPoint(x: body.maxX - 1, y: y - half))
+            tail.addLine(to: CGPoint(x: rect.maxX, y: y))
+            tail.addLine(to: CGPoint(x: body.maxX - 1, y: y + half))
+        }
+        tail.closeSubpath()
+        path.addPath(tail)
+        return path
     }
 }
 

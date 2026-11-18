@@ -11,19 +11,45 @@ struct WindowEntry: Identifiable {
     var thumbnail: NSImage?
 }
 
+/// The system's window list, kept ready so a preview can open the moment a Dock icon is hovered
+/// (fetching it takes long enough to notice). Refreshed while the pointer is near the Dock.
+@MainActor
+enum ShareableContentCache {
+    private(set) static var content: SCShareableContent?
+    private static var fetchedAt = Date.distantPast
+    private static var inFlight: Task<SCShareableContent?, Never>?
+
+    static var age: TimeInterval { Date().timeIntervalSince(fetchedAt) }
+
+    @discardableResult
+    static func refresh() async -> SCShareableContent? {
+        if let inFlight { return await inFlight.value }
+        let task = Task { try? await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false) }
+        inFlight = task
+        let result = await task.value
+        inFlight = nil
+        if let result {
+            content = result
+            fetchedAt = Date()
+        }
+        return result
+    }
+}
+
+typealias WindowList = (entries: [WindowEntry], scWindows: [CGWindowID: SCWindow])
+
+@MainActor
 enum WindowProvider {
     /// Lists the "real" windows of an app: on-screen ones, minimized ones and titled ones on other Spaces.
     static func windows(
         for app: NSRunningApplication,
+        in content: SCShareableContent,
         includeMinimized: Bool,
         includeOtherSpaces: Bool
-    ) async -> (entries: [WindowEntry], scWindows: [CGWindowID: SCWindow]) {
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
-        else { return ([], [:]) }
-
+    ) -> WindowList {
         let pid = app.processIdentifier
         let appHidden = app.isHidden
-        let axWindows = await MainActor.run { axWindowStates(pid: pid) }
+        let axWindows = axWindowStates(pid: pid)
 
         var entries: [WindowEntry] = []
         var map: [CGWindowID: SCWindow] = [:]
@@ -62,8 +88,7 @@ enum WindowProvider {
         return (entries, map)
     }
 
-    static func thumbnail(for window: SCWindow, fitting maxSize: CGSize) async -> NSImage? {
-        let scale = await MainActor.run { NSScreen.main?.backingScaleFactor ?? 2 }
+    nonisolated static func thumbnail(for window: SCWindow, fitting maxSize: CGSize, scale: CGFloat) async -> NSImage? {
         let ratio = min(maxSize.width / window.frame.width, maxSize.height / window.frame.height, 1)
         let config = SCStreamConfiguration()
         config.width = max(1, Int(window.frame.width * ratio * scale))
@@ -81,7 +106,6 @@ enum WindowProvider {
 
     private struct AXWindowState { let index: Int; let minimized: Bool }
 
-    @MainActor
     private static func axWindowStates(pid: pid_t) -> [CGWindowID: AXWindowState] {
         let app = AXUIElementCreateApplication(pid)
         var result: [CGWindowID: AXWindowState] = [:]

@@ -112,15 +112,25 @@ final class Updater {
         return try JSONDecoder().decode(Release.self, from: data)
     }
 
+    /// Compares "X.Y.Z" versions; a test build "X.Y.Z<letter>" comes before the final X.Y.Z.
     static func isVersion(_ lhs: String, newerThan rhs: String) -> Bool {
-        let a = lhs.split(separator: ".").map { Int($0) ?? 0 }
-        let b = rhs.split(separator: ".").map { Int($0) ?? 0 }
-        for i in 0..<max(a.count, b.count) {
-            let x = i < a.count ? a[i] : 0
-            let y = i < b.count ? b[i] : 0
+        func parse(_ version: String) -> (numbers: [Int], test: String?) {
+            let numbers = version.prefix { $0.isNumber || $0 == "." }
+            let suffix = version.dropFirst(numbers.count)
+            return (numbers.split(separator: ".").map { Int($0) ?? 0 }, suffix.isEmpty ? nil : String(suffix))
+        }
+        let a = parse(lhs), b = parse(rhs)
+        for i in 0..<max(a.numbers.count, b.numbers.count) {
+            let x = i < a.numbers.count ? a.numbers[i] : 0
+            let y = i < b.numbers.count ? b.numbers[i] : 0
             if x != y { return x > y }
         }
-        return false
+        switch (a.test, b.test) {
+        case (nil, nil): return false
+        case (nil, _): return true        // final is newer than its test builds
+        case (_, nil): return false
+        case let (x?, y?): return x > y
+        }
     }
 
     // MARK: - Prompt

@@ -1,20 +1,52 @@
 import Foundation
 
-/// DockPeek 1.1.1–1.2.4 kept the Dock up by switching auto-hide off while a preview was open (which made
-/// macOS reserve the Dock's space). If one of those versions quit while doing it, auto-hide stayed off:
-/// put it back on the next launch. The Dock is now kept up by `DockHoverNudge` instead.
+/// Keeps an auto-hiding Dock on screen while the pointer is in a preview: moving the pointer from the Dock
+/// into the preview would otherwise make the Dock hide and leave the preview floating on its own.
+///
+/// Turns auto-hide off with the Dock's private CoreDock call (the same switch as System Settings › Desktop
+/// & Dock, applied without restarting the Dock) and back on when the pointer leaves the preview. While it is
+/// off, macOS reserves the Dock's space, so desktop icons sorted automatically may rearrange.
+///
+/// (1.2.4 tried telling the Dock the pointer was still on the icon instead; the Dock then stayed stuck open
+/// until the real pointer passed over it again.)
+///
+/// The user's setting is always put back; if DockPeek quits while holding the Dock, `restoreAfterCrash()`
+/// puts it back on the next launch.
 @MainActor
 enum DockAutohideLock {
+    private typealias GetFunction = @convention(c) () -> Bool
     private typealias SetFunction = @convention(c) (Bool) -> Void
+
     private static let pendingRestoreKey = "dockAutohidePendingRestore"
+    private static var isHolding = false
+
+    private static let functions: (get: GetFunction, set: SetFunction)? = {
+        guard let handle = dlopen("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices", RTLD_NOW),
+              let get = dlsym(handle, "CoreDockGetAutoHideEnabled"),
+              let set = dlsym(handle, "CoreDockSetAutoHideEnabled")
+        else { return nil }
+        return (unsafeBitCast(get, to: GetFunction.self), unsafeBitCast(set, to: SetFunction.self))
+    }()
+
+    /// Turns auto-hide off (only if it is on) until `release()`.
+    static func hold() {
+        guard !isHolding, let functions, functions.get() else { return }
+        UserDefaults.standard.set(true, forKey: pendingRestoreKey)
+        functions.set(false)
+        isHolding = true
+    }
+
+    static func release() {
+        guard isHolding, let functions else { return }
+        functions.set(true)
+        isHolding = false
+        UserDefaults.standard.removeObject(forKey: pendingRestoreKey)
+    }
 
     static func restoreAfterCrash() {
-        guard UserDefaults.standard.bool(forKey: pendingRestoreKey),
-              let handle = dlopen("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices", RTLD_NOW),
-              let set = dlsym(handle, "CoreDockSetAutoHideEnabled")
-        else { return }
-        unsafeBitCast(set, to: SetFunction.self)(true)
+        guard UserDefaults.standard.bool(forKey: pendingRestoreKey), let functions else { return }
+        functions.set(true)
         UserDefaults.standard.removeObject(forKey: pendingRestoreKey)
-        Log.app.info("Restored Dock auto-hide left off by a previous version")
+        Log.app.info("Restored Dock auto-hide left off by a previous run")
     }
 }

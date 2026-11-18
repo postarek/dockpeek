@@ -55,11 +55,17 @@ administrador uma vez; a partir do `.pkg` 1.1.0 o app já fica no nome do usuár
 Para publicar uma versão nova:
 
 ```bash
-./build.sh --bump            # ou: --bump minor / --bump major
+./build.sh --bump            # nova versão de teste "a" (ex.: 1.2.5 → 1.2.6a); ou --bump minor / major
+./build.sh --install         # instala localmente para testar
+./build.sh --bump test       # próxima versão de teste (1.2.6a → 1.2.6b), a cada rodada de ajustes
+# quando aprovada:
+./build.sh --bump final      # tira a letra (1.2.6b → 1.2.6)
 # anote a mudança no CHANGELOG.md (em inglês: vira a nota que aparece no app)
 git commit -am "DockPeek x.y.z"
 ./build.sh --release         # gera .pkg + .zip, faz push e cria a release no GitHub
 ```
+
+Versões com letra são de teste: aparecem assim no menu e no painel, e o `--release` se recusa a publicá-las.
 
 Na sua própria máquina, `./build.sh --install` continua instalando direto o que está no código.
 

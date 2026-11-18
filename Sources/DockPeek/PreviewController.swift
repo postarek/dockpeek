@@ -36,9 +36,21 @@ final class PreviewController {
     private var pollTimer: Timer?
     private var outsideSince: Date?
     private var mouseDownMonitor: Any?
+    private var moveMonitors: [Any] = []
+    private var prewarmTimer: Timer?
 
-    /// Negative: the preview slightly overlaps the top of the (magnified) icon frame, which is where the
-    /// Dock draws its app-name label, so the label is covered while a preview is open.
+    /// Within reach of the Dock's screen edge (where hovering an icon is about to happen).
+    private static var isPointerNearDock: Bool {
+        let mouse = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) })?.frame else { return false }
+        let reach: CGFloat = 160
+        switch DockOrientation.current {
+        case .bottom: return mouse.y - screen.minY < reach
+        case .left: return mouse.x - screen.minX < reach
+        case .right: return screen.maxX - mouse.x < reach
+        }
+    }
+
     /// Recently captured thumbnails, so switching between Dock icons shows the windows right away
     /// (the fresh capture replaces them a moment later).
     private var thumbnailCache: [CGWindowID: NSImage] = [:]
@@ -61,7 +73,8 @@ final class PreviewController {
         })
     }
 
-    private static let gap: CGFloat = -8
+    /// Distance between the resting Dock icon and the preview body: small, so there is almost nothing to cross.
+    private static let gap: CGFloat = 10
 
     init() {
         hostingView = FirstMouseHostingView(rootView: PreviewView(model: model))
@@ -71,6 +84,31 @@ final class PreviewController {
             WindowActions.focus(entry)
         }
         model.onClose = { [weak self] entry in self?.close(entry) }
+
+        // React to the pointer as it moves (the timer is only a fallback), so the preview leaves together
+        // with the Dock instead of a beat later.
+        let onMove: (NSEvent) -> Void = { _ in
+            MainActor.assumeIsolated { [weak self] in
+                guard let self, self.isPresented else { return }
+                self.checkMouse()
+            }
+        }
+        moveMonitors = [
+            NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: onMove),
+            NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { event in
+                onMove(event)
+                return event
+            },
+        ].compactMap { $0 }
+
+        // Keep the window list ready while the pointer is near the Dock.
+        prewarmTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                guard DockPeekSettings.previewsEnabled, Self.isPointerNearDock,
+                      ShareableContentCache.age > 1 else { return }
+                Task { await ShareableContentCache.refresh() }
+            }
+        }
 
         // Clicking anywhere else (including the Dock icon itself) dismisses the preview.
         mouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
@@ -98,9 +136,14 @@ final class PreviewController {
             MainActor.assumeIsolated { self?.show(for: item) }
         }
         pendingShow = work
-        // Activation delay so sweeping across the Dock does not flash previews.
-        let delay = isPresented ? 0.05 : Double(DockPeekSettings.activationDelayMs) / 1000
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        // Optional activation delay, so sweeping across the Dock does not flash previews. Without one the
+        // preview opens together with the hover (and covers the Dock's own name label right away).
+        let delay = Double(DockPeekSettings.activationDelayMs) / 1000
+        if delay <= 0 || isPresented {
+            work.perform()
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        }
     }
 
     private func show(for item: DockItem) {
@@ -109,25 +152,49 @@ final class PreviewController {
 
         loadTask?.cancel()
         loadTask = Task { [weak self] in
-            let (entries, scWindows) = await WindowProvider.windows(
-                for: app,
-                includeMinimized: DockPeekSettings.includeMinimized,
-                includeOtherSpaces: DockPeekSettings.includeOtherSpaces
-            )
-            guard let self, !Task.isCancelled else { return }
-            // Listing windows takes a moment: by now the pointer may have left the icon (and the Dock may
-            // have hidden). Showing the panel anyway would put it under the pointer and keep it open.
-            guard self.isMouseOver(item) || self.isMouseInsidePanel else {
-                Log.app.debug("Pointer left \(item.title, privacy: .public) before its preview was ready")
-                return self.hide()
+            // Open from the window list kept ready near the Dock, so the preview appears with the hover;
+            // then check a fresh list and update the preview if windows came or went.
+            let cached = ShareableContentCache.age < Self.cachedListMaxAge ? ShareableContentCache.content : nil
+            var shown: [CGWindowID] = []
+            if let cached {
+                guard let self, !Task.isCancelled else { return }
+                let list = self.windowList(for: app, in: cached)
+                guard self.presentIfStillHovering(list, app: app, item: item) else { return }
+                shown = list.entries.map(\.id)
             }
-            let tooFew = entries.isEmpty || (DockPeekSettings.skipSingleWindow && entries.count == 1)
-            Log.app.debug("\(app.localizedName ?? "?", privacy: .public): \(entries.count) windows")
-            guard !tooFew else { return self.hide() }
-
-            self.present(entries: entries, app: app, item: item)
-            await self.loadThumbnails(entries: entries, scWindows: scWindows)
+            guard let fresh = await ShareableContentCache.refresh() else { return }
+            guard let self, !Task.isCancelled else { return }
+            let list = self.windowList(for: app, in: fresh)
+            if cached == nil || list.entries.map(\.id) != shown {
+                guard self.presentIfStillHovering(list, app: app, item: item) else { return }
+            }
+            await self.loadThumbnails(entries: list.entries, scWindows: list.scWindows)
         }
+    }
+
+    private static let cachedListMaxAge: TimeInterval = 5
+
+    private func windowList(for app: NSRunningApplication, in content: SCShareableContent) -> WindowList {
+        WindowProvider.windows(for: app, in: content,
+                               includeMinimized: DockPeekSettings.includeMinimized,
+                               includeOtherSpaces: DockPeekSettings.includeOtherSpaces)
+    }
+
+    /// Shows (or updates) the preview, unless the pointer already left the icon or there is nothing to show.
+    private func presentIfStillHovering(_ list: WindowList, app: NSRunningApplication, item: DockItem) -> Bool {
+        // Showing the panel after the pointer left would put it under the pointer and keep it open.
+        guard isMouseOver(item) || isMouseInsidePanel else {
+            Log.app.debug("Pointer left \(item.title, privacy: .public) before its preview was ready")
+            hide()
+            return false
+        }
+        let tooFew = list.entries.isEmpty || (DockPeekSettings.skipSingleWindow && list.entries.count == 1)
+        guard !tooFew else {
+            hide()
+            return false
+        }
+        present(entries: list.entries, app: app, item: item)
+        return true
     }
 
     private func present(entries: [WindowEntry], app: NSRunningApplication, item: DockItem) {
@@ -138,6 +205,11 @@ final class PreviewController {
         model.appName = app.localizedName ?? item.title
         model.appIcon = app.icon
         model.vertical = orientation != .bottom
+        switch orientation {
+        case .bottom: model.tailEdge = .bottom
+        case .left: model.tailEdge = .left
+        case .right: model.tailEdge = .right
+        }
         model.thumbnailMaxSize = Self.thumbnailSize(count: entries.count, orientation: orientation, visible: visible)
         model.windows = entries.map { entry in
             var entry = entry
@@ -162,18 +234,36 @@ final class PreviewController {
     private func layoutPanel(anchor: CGRect, orientation: DockOrientation, visible: CGRect) {
         hostingView.layoutSubtreeIfNeeded()
         let size = hostingView.fittingSize
+        // Close to the resting icon (crossing a wide gap made the Dock start hiding). The panel includes the
+        // tail, which reaches into the gap towards the icon.
+        let inset = Self.gap - PreviewTail.length
         var origin: CGPoint
         switch orientation {
         case .bottom:
-            origin = CGPoint(x: anchor.midX - size.width / 2, y: max(anchor.maxY, visible.minY) + Self.gap)
+            origin = CGPoint(x: anchor.midX - size.width / 2, y: anchor.maxY + inset)
         case .left:
-            origin = CGPoint(x: max(anchor.maxX, visible.minX) + Self.gap, y: anchor.midY - size.height / 2)
+            origin = CGPoint(x: anchor.maxX + inset, y: anchor.midY - size.height / 2)
         case .right:
-            origin = CGPoint(x: min(anchor.minX, visible.maxX) - size.width - Self.gap, y: anchor.midY - size.height / 2)
+            origin = CGPoint(x: anchor.minX - size.width - inset, y: anchor.midY - size.height / 2)
         }
-        origin.x = min(max(origin.x, visible.minX + 4), visible.maxX - size.width - 4)
-        origin.y = min(max(origin.y, visible.minY + 4), visible.maxY - size.height - 4)
+        // Keep it on screen, but ignore the Dock's own edge of the visible frame: that edge moves while the
+        // Dock is held (auto-hide off reserves its space) and would push the preview away from the Dock.
+        var bounds = visible
+        if let screen = NSScreen.screens.first(where: { $0.frame.intersects(anchor) })?.frame {
+            switch orientation {
+            case .bottom: bounds = CGRect(x: visible.minX, y: screen.minY, width: visible.width, height: visible.maxY - screen.minY)
+            case .left: bounds = CGRect(x: screen.minX, y: visible.minY, width: visible.maxX - screen.minX, height: visible.height)
+            case .right: bounds = CGRect(x: visible.minX, y: visible.minY, width: screen.maxX - visible.minX, height: visible.height)
+            }
+        }
+        origin.x = min(max(origin.x, bounds.minX + 4), bounds.maxX - size.width - 4)
+        origin.y = min(max(origin.y, bounds.minY), bounds.maxY - size.height - 4)
         panel.setFrame(CGRect(origin: origin, size: size), display: true)
+        // Point the tail at the icon even when the preview was pushed sideways to stay on screen.
+        switch orientation {
+        case .bottom: model.tailPosition = anchor.midX - origin.x
+        case .left, .right: model.tailPosition = origin.y + size.height - anchor.midY
+        }
     }
 
     private static func thumbnailSize(count: Int, orientation: DockOrientation, visible: CGRect) -> CGSize {
@@ -192,10 +282,11 @@ final class PreviewController {
 
     private func loadThumbnails(entries: [WindowEntry], scWindows: [CGWindowID: SCWindow]) async {
         let maxSize = model.thumbnailMaxSize
+        let scale = NSScreen.main?.backingScaleFactor ?? 2
         await withTaskGroup(of: (CGWindowID, NSImage?).self) { group in
             for entry in entries where !entry.isMinimized {
                 guard let window = scWindows[entry.id] else { continue }
-                group.addTask { (entry.id, await WindowProvider.thumbnail(for: window, fitting: maxSize)) }
+                group.addTask { (entry.id, await WindowProvider.thumbnail(for: window, fitting: maxSize, scale: scale)) }
             }
             for await (id, image) in group {
                 guard !Task.isCancelled, let image else { continue }
@@ -218,6 +309,7 @@ final class PreviewController {
     }
 
     func hide() {
+        DockAutohideLock.release()
         pendingShow?.cancel()
         loadTask?.cancel()
         pollTimer?.invalidate()
@@ -257,7 +349,7 @@ final class PreviewController {
     /// pointer leaves quickly), so the AX selection alone can be stale: confirm with the pointer position.
     private func isMouseOver(_ item: DockItem) -> Bool {
         // Up to the magnified icon's full size, which also covers the gap up to the preview.
-        var area = DockGeometry.anchor(for: item.frame).insetBy(dx: -6, dy: -6)
+        var area = DockGeometry.anchor(for: item.frame, magnified: true).insetBy(dx: -6, dy: -6)
         // Extend to the screen edge the Dock is attached to (covers the gap below/beside the icon).
         if let screen = NSScreen.screens.first(where: { $0.frame.intersects(item.frame) }) {
             let edge = screen.frame
@@ -271,9 +363,12 @@ final class PreviewController {
     }
 
     private func checkMouse() {
-        if isMouseInsidePanel, DockPeekSettings.keepDockVisible, let item = shownItem {
-            // Tell the Dock (only) the pointer is still on the icon, near its base, so it doesn't auto-hide.
-            DockHoverNudge.nudge(at: CGPoint(x: item.frame.midX, y: item.frame.minY + item.frame.height / 3))
+        // Hold an auto-hiding Dock only while the pointer is in the preview (holding it makes macOS reserve
+        // the Dock's space), and let it go as soon as the pointer leaves.
+        if isMouseInsidePanel, DockPeekSettings.keepDockVisible {
+            DockAutohideLock.hold()
+        } else {
+            DockAutohideLock.release()
         }
         let hovered = hoveredItem.flatMap { isMouseOver($0) ? $0 : nil }
         // Over the shown icon counts even if the Dock dropped its hover state (it can when the Dock auto-hides).
@@ -300,7 +395,7 @@ final class PreviewController {
         guard let item = shownItem,
               let screen = NSScreen.screens.first(where: { $0.frame.intersects(item.frame) })?.frame
         else { return false }
-        let anchor = DockGeometry.anchor(for: item.frame)
+        let anchor = DockGeometry.anchor(for: item.frame, magnified: true)
         let mouse = NSEvent.mouseLocation
         guard screen.contains(mouse) else { return false }
         switch DockOrientation.current {

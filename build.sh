@@ -5,7 +5,9 @@
 #   ./build.sh              build build/DockPeek.app
 #   ./build.sh --install    build, copy to /Applications and relaunch (the app installs/updates its Settings pane)
 #   ./build.sh --package    build dist/DockPeek-<version>.pkg to share with other people
-#   ./build.sh --bump [major|minor|patch]   bump the version in VERSION (default: patch)
+#   ./build.sh --bump [major|minor|patch]   start the next version as test build "a" (e.g. 1.2.5 → 1.2.6a)
+#   ./build.sh --bump test                  next test build of the same version (1.2.6a → 1.2.6b)
+#   ./build.sh --bump final                 drop the test letter when it is approved (1.2.6b → 1.2.6)
 #   ./build.sh --release    package and publish a GitHub release (the installed apps update from it)
 #
 # Optional signing for distribution (needs a paid Apple Developer account):
@@ -19,17 +21,28 @@ cd "$(dirname "$0")"
 MODE="${1:-}"
 
 if [[ "$MODE" == "--bump" ]]; then
-    # Bumps VERSION (semver). patch = fixes, minor = new features, major = big/breaking changes.
+    # Semver (patch = fixes, minor = new features, major = big changes) plus a test letter: every build
+    # installed for trying out is X.Y.Z<letter>; only the approved one becomes X.Y.Z and can be released.
     PART="${2:-patch}"
-    IFS=. read -r MAJOR MINOR PATCH < <(tr -d '[:space:]' < VERSION; echo)
+    CURRENT="$(tr -d '[:space:]' < VERSION)"
+    NUMBERS="${CURRENT%%[a-z]*}"
+    LETTER="${CURRENT#"$NUMBERS"}"
+    IFS=. read -r MAJOR MINOR PATCH < <(echo "$NUMBERS")
     case "$PART" in
-        major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
-        minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
-        patch) PATCH=$((PATCH + 1)) ;;
-        *) echo "Usage: ./build.sh --bump [major|minor|patch]" >&2; exit 1 ;;
+        major) NEW="$((MAJOR + 1)).0.0a" ;;
+        minor) NEW="$MAJOR.$((MINOR + 1)).0a" ;;
+        patch) NEW="$MAJOR.$MINOR.$((PATCH + 1))a" ;;
+        test)
+            if [[ -z "$LETTER" ]]; then
+                echo "$CURRENT is final; start a new version first: ./build.sh --bump patch" >&2; exit 1
+            fi
+            [[ "$LETTER" == "z" ]] && { echo "No test letters left after z." >&2; exit 1; }
+            NEW="$NUMBERS$(echo "$LETTER" | tr 'a-y' 'b-z')" ;;
+        final) NEW="$NUMBERS" ;;
+        *) echo "Usage: ./build.sh --bump [major|minor|patch|test|final]" >&2; exit 1 ;;
     esac
-    echo "$MAJOR.$MINOR.$PATCH" > VERSION
-    echo "Version: $MAJOR.$MINOR.$PATCH (remember to add it to CHANGELOG.md)"
+    echo "$NEW" > VERSION
+    echo "Version: $NEW"
     exit 0
 fi
 
@@ -37,6 +50,9 @@ VERSION="${DOCKPEEK_VERSION:-$(tr -d '[:space:]' < VERSION)}"   # DOCKPEEK_VERSI
 REPO="postarek/dockpeek"
 
 if [[ "$MODE" == "--release" ]]; then
+    if [[ "$VERSION" =~ [a-z]$ ]]; then
+        echo "$VERSION is a test build. When it is approved: ./build.sh --bump final" >&2; exit 1
+    fi
     # Refuse to publish something that isn't committed, or a version that already exists.
     if [[ -n "$(git status --porcelain)" ]]; then
         echo "Commit your changes first (git status is not clean)." >&2; exit 1

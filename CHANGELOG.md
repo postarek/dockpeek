@@ -4,6 +4,19 @@ Versions follow [semver](https://semver.org): patch for fixes, minor for new fea
 changes. Bump with `./build.sh --bump [patch|minor|major]`. Each section below becomes the release notes
 shown in DockPeek's update prompt, so it is written in English.
 
+## 1.2.5 — 2026-11-18
+
+- Fixed: the auto-hiding Dock often stayed stuck open after using a preview. DockPeek again keeps the
+  Dock up by turning auto-hide off only while the pointer is inside a preview, and back on as soon as it
+  leaves. While it is off, macOS reserves the Dock's space, so desktop icons that are sorted
+  automatically may move; use View › Sort By › None on the desktop to avoid that.
+- The preview now sits just above the Dock icons (10 pt), so there is almost no gap to cross on the
+  way in (crossing it made the Dock start hiding and flicker). It could also drift far above the Dock.
+- The preview has a small tail pointing at its Dock icon, like the Dock's own name label.
+- The preview opens together with the hover and closes together with the Dock: the window list is kept
+  ready while the pointer is near the Dock, the pointer is tracked as it moves, and both delays now
+  default to 0 ms (still adjustable in System Settings › DockPeek).
+
 ## 1.2.4 — 2026-11-16
 
 - Fixed: desktop icons rearranged while a preview was open. DockPeek no longer turns Dock auto-hide off

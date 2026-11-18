@@ -45,8 +45,8 @@ public enum DockPeekSettings {
 
     public static let registeredDefaults: [String: Any] = [
         Key.previewsEnabled: true,
-        Key.activationDelayMs: 150,
-        Key.hideDelayMs: 150,
+        Key.activationDelayMs: 0,
+        Key.hideDelayMs: 0,
         Key.previewSize: PreviewSize.medium.rawValue,
         Key.includeOtherSpaces: true,
         Key.includeMinimized: true,

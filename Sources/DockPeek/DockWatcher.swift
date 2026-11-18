@@ -38,27 +38,30 @@ enum DockOrientation {
 enum DockGeometry {
     /// How far the resting Dock sits from the screen edge (learned from the icons; about 5 pt).
     private static var restInset: CGFloat = 5
+    private static let maxRestInset: CGFloat = 12
 
-    /// The icon frame grown, away from the screen edge, to the largest size magnification can give it
-    /// (the reported frame is the icon plus ~4 pt across and ~20 pt along, for the running indicator).
+    /// The icon's frame at a fixed size, whatever magnification is doing at the moment it was read: the
+    /// resting icon (`magnified: false`, where the preview is attached, right on top of the Dock) or the
+    /// fully magnified icon (`magnified: true`, the area where the pointer still counts as on the icon).
+    /// The reported frame is the icon plus ~4 pt across and ~20 pt along, for the running indicator.
     /// Coming out of auto-hide the Dock reports icons while still sliding in, i.e. too close to the edge,
     /// so the frame is also pushed out to where the resting Dock is.
-    static func anchor(for reported: CGRect) -> CGRect {
+    static func anchor(for reported: CGRect, magnified: Bool = false) -> CGRect {
         let frame = settled(reported)
         let dock = UserDefaults(suiteName: "com.apple.dock")
         let tileSize = CGFloat(dock?.double(forKey: "tilesize") ?? 0)
-        let largeSize = dock?.bool(forKey: "magnification") == true
+        let largeSize = magnified && dock?.bool(forKey: "magnification") == true
             ? CGFloat(dock?.double(forKey: "largesize") ?? 0) : 0
         let maxIcon = max(tileSize, largeSize)
         switch DockOrientation.current {
         case .bottom:
-            let extent = max(frame.height, frame.height - frame.width + maxIcon + 4)
+            let extent = frame.height - frame.width + maxIcon + 4
             return CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: extent)
         case .left:
-            let extent = max(frame.width, frame.width - frame.height + maxIcon + 4)
+            let extent = frame.width - frame.height + maxIcon + 4
             return CGRect(x: frame.minX, y: frame.minY, width: extent, height: frame.height)
         case .right:
-            let extent = max(frame.width, frame.width - frame.height + maxIcon + 4)
+            let extent = frame.width - frame.height + maxIcon + 4
             return CGRect(x: frame.maxX - extent, y: frame.minY, width: extent, height: frame.height)
         }
     }
@@ -81,7 +84,9 @@ extension DockGeometry {
         case .left: inset = frame.minX - edge.minX
         case .right: inset = edge.maxX - frame.maxX
         }
-        if inset > restInset, inset < 40 { restInset = inset }
+        // A resting Dock sits ~5 pt from the edge; larger readings come from odd Dock states and would
+        // push every later preview up (the learned value never shrinks), so ignore them.
+        if inset > restInset, inset <= maxRestInset { restInset = inset }
         guard inset < restInset else { return frame }
         let shift = restInset - inset
         switch orientation {
