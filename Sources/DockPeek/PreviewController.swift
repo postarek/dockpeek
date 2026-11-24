@@ -125,6 +125,8 @@ final class PreviewController {
     // MARK: - Hover handling
 
     func handleHover(_ item: DockItem?) {
+        // Caused by DockHoverNudge's pointer pass, not by the user.
+        guard Date() >= DockHoverNudge.ignoreHoverUntil else { return }
         pendingShow?.cancel()
         hoveredItem = item
         guard DockPeekSettings.previewsEnabled else { return hide() }
@@ -309,7 +311,7 @@ final class PreviewController {
     }
 
     func hide() {
-        DockAutohideLock.release()
+        DockHoverNudge.release()
         pendingShow?.cancel()
         loadTask?.cancel()
         pollTimer?.invalidate()
@@ -363,12 +365,11 @@ final class PreviewController {
     }
 
     private func checkMouse() {
-        // Hold an auto-hiding Dock only while the pointer is in the preview (holding it makes macOS reserve
-        // the Dock's space), and let it go as soon as the pointer leaves.
-        if isMouseInsidePanel, DockPeekSettings.keepDockVisible {
-            DockAutohideLock.hold()
+        // Keep an auto-hiding Dock up only while the pointer is in the preview; let it go as it leaves.
+        if isMouseInsidePanel, DockPeekSettings.keepDockVisible, let item = shownItem {
+            DockHoverNudge.hold(at: CGPoint(x: item.frame.midX, y: item.frame.minY + item.frame.height / 3))
         } else {
-            DockAutohideLock.release()
+            DockHoverNudge.release()
         }
         let hovered = hoveredItem.flatMap { isMouseOver($0) ? $0 : nil }
         // Over the shown icon counts even if the Dock dropped its hover state (it can when the Dock auto-hides).

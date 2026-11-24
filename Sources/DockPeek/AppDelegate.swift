@@ -31,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             MainActor.assumeIsolated {
                 DockPeekSettings.store.synchronize()
                 if !DockPeekSettings.previewsEnabled { controller?.hide() }
-                if !DockPeekSettings.keepDockVisible { DockAutohideLock.release() }
+                if !DockPeekSettings.keepDockVisible { DockHoverNudge.release() }
             }
         }
         DistributedNotificationCenter.default().addObserver(
@@ -42,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        DockAutohideLock.release()
+        DockHoverNudge.release()
     }
 
     /// Like HyperDock, start at login by default; the user can turn it off in the menu afterwards.

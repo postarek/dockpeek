@@ -4,6 +4,12 @@ Versions follow [semver](https://semver.org): patch for fixes, minor for new fea
 changes. Bump with `./build.sh --bump [patch|minor|major]`. Each section below becomes the release notes
 shown in DockPeek's update prompt, so it is written in English.
 
+## 1.2.6 — 2026-11-24
+
+- Fixed: holding the Dock open while the pointer is in a preview no longer makes macOS reserve the
+  Dock's space, so desktop icons stay put and apps filling the screen are no longer resized. The Dock
+  hides again normally when the pointer leaves the preview.
+
 ## 1.2.5 — 2026-11-18
 
 - Fixed: the auto-hiding Dock often stayed stuck open after using a preview. DockPeek again keeps the
